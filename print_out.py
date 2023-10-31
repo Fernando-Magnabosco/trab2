@@ -1,27 +1,15 @@
+import json
+
+
 def new_line():
     print()
 
 
-def print_update(transaction, old_value, log_values):
-    row = log_values[0]
-    column = log_values[1]
-    new_value = log_values[3]
-
-    print(
-        "TRANSAÇÃO "
-        + transaction
-        + ": No registro "
-        + row
-        + ", a coluna "
-        + column
-        + " estava "
-        + str(old_value)
-        + " e no log atualizou para "
-        + new_value
-    )
+def print_update(table, column, value):
+    print("UPDATE data SET " + column + " = " + value + " WHERE id = " + table)
 
 
-def print_transactions(checkpoint_transactions, committed_transactions):
+def print_transactions(committed_transactions):
     new_line()
 
     # Não tem transações commitadas
@@ -29,47 +17,30 @@ def print_transactions(checkpoint_transactions, committed_transactions):
         print("Não houve nenhuma alteração no banco")
         return
 
-    # Imprime transactions que foram commitadas
-    if not checkpoint_transactions:
-        for transaction in committed_transactions:
-            print("TRANSAÇÃO " + transaction + ": realizou Redo")
-
-    # Imprime transações do checkpoint que realizaram ou não o Redo
-    for transaction in checkpoint_transactions:
-        if transaction in committed_transactions:
-            print("TRANSAÇÃO " + transaction + ": realizou Redo")
-        else:
-            print("TRANSAÇÃO " + transaction + ": não realizou Redo")
+    # Imprime transações do checkpoint que realizaram ou não o Undo
+    for transaction in committed_transactions:
+        print("TRANSAÇÃO " + transaction + ": realizou Undo")
 
 
 def print_json(cursor):
-    id = []
-    a = []
-    b = []
-
-    # Retorna todas as tuplas da tabela
+    # Execute the query
     cursor.execute("SELECT * FROM data ORDER BY id")
     tuples = cursor.fetchall()
 
-    for tuple in tuples:
-        id.append(tuple[0])
-        a.append(tuple[1])
-        b.append(tuple[2])
+    # Get the column names
+    column_names = [desc[0] for desc in cursor.description]
 
-    print(
-        """
-    {
-      "INITIAL": {
-        "id": """
-        + str(id)[1:-1]
-        + """,
-        "A: """
-        + str(a)[1:-1]
-        + """,
-        "B": """
-        + str(b)[1:-1]
-        + """
-      }
-    }
-  """
-    )
+    # Initialize a dictionary to hold the column data
+    column_data = {name: [] for name in column_names}
+
+    # Iterate over the tuples
+    for tuple in tuples:
+        # Iterate over each column in the tuple
+        for i, value in enumerate(tuple):
+            # Append the value to the appropriate column in the dictionary
+            column_data[column_names[i]].append(value)
+
+    # Convert the dictionary to a JSON string
+    json_data = json.dumps({"INITIAL": column_data}, indent=2)
+
+    print(json_data)

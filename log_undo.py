@@ -5,14 +5,7 @@ import re
 from print_out import print_transactions, print_json, print_update
 
 
-def find_checkpoint(file):
-    # Encontrando o checkpoint e salvando as transações que ainda não terminaram
-    matches = re.findall("<CKPT \((.+?)\)>", file.read())
-    # Retorna transações do último checkpoint, se não tiver retorna array vazio
-    return matches[-1].split(",") if matches else []
-
-
-def find_committed_transations(file):
+def find_transations_after_checkpoint(file):
     transactions = []
 
     # Retona pra início do arquivo
@@ -21,10 +14,10 @@ def find_committed_transations(file):
     # Percorre arquivo de baixo pra cima
     for line in reversed(list(file)):
         # Só vai percorrer até encontrar um checkpoint
-        if "CKPT" in line:
+        if "END CKPT" in line:
             break
 
-        matches = re.search("<commit (.+?)>", line)
+        matches = re.search("<start (.+?)>", line)
         # Se encontra commit, adiciona transição na lista
         if matches:
             transactions.append(matches.group(1))
@@ -33,10 +26,52 @@ def find_committed_transations(file):
     return transactions[::-1]
 
 
+def find_changes_after_checkpoint(file):
+    transactions = []
+
+    file.seek(0)
+
+    for line in reversed(list(file)):
+        if "END CKPT" in line:
+            break
+
+        matches = re.search("<(.+?),(.+?), (.+?),(.+?)>", line)
+        if matches:
+            transactions.append(matches.groups())
+
+    return transactions[::-1]
+
+
+def undo_changes(file, cursor, changes_after_first_checkpoint):
+    for change in changes_after_first_checkpoint:
+        cursor.execute(
+            "UPDATE data SET "
+            + change[2]
+            + " = "
+            + change[3]
+            + " WHERE id = "
+            + change[1]
+        )
+        print_update(change[1], change[2], change[3])
+
+
 with open("metadados.json", "r") as metadados_file:
     metadados = json.load(metadados_file)
 
-tabela = metadados["table"]
-coluna_id = tabela["id"]
-coluna_A = tabela["A"]
-coluna_B = tabela["B"]
+
+def log_undo(cursor):
+    # Abre arquivo da entradaLog apenas para leitura
+    file = open("log.txt", "r")
+
+    try:
+        transactions_after_checkpoint = find_transations_after_checkpoint(file)
+        changes_after_checkpoint = find_changes_after_checkpoint(file)
+
+        print_transactions(transactions_after_checkpoint)
+        undo_changes(file, cursor, changes_after_checkpoint)
+
+        print_json(cursor)
+
+    finally:
+        # Fecha arquivo
+        file.close()
